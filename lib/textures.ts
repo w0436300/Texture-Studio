@@ -61,6 +61,26 @@ export interface Texture {
     | "neon-glow";
 }
 
+/**
+ * 有机 / 强微观纹理：工程上优先用 **AI 生成方形贴图** 贴到挤出 mesh，
+ * 结果按 `mat_{codePoint}_{textureId}` 永久缓存在 localStorage；其余材质由
+ * Three.js PBR 直接渲染（$0）。
+ */
+const AI_TEXTURE_MATERIAL_IDS = new Set<TextureId>([
+  "moss",
+  "plush",
+  "felt",
+  "wood",
+  "marble",
+  "wax",
+]);
+
+/** `random` / `mixed` 为入口态；判断时请用 resolve 后的具体 id。 */
+export function isAiTextureMaterial(id: TextureId): boolean {
+  if (id === "random" || id === "mixed") return false;
+  return AI_TEXTURE_MATERIAL_IDS.has(id);
+}
+
 export const TEXTURES: Texture[] = [
   {
     id: "random",

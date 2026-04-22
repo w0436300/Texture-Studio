@@ -75,15 +75,71 @@ body {
   animation: ts-pulse 1.4s ease-in-out infinite;
 }
 
-/* Preview image container */
+/* Preview container — lets the SVG/image drive its own height via
+   aspect ratio, so short single-line text doesn't look tiny inside a
+   tall fixed box. */
 .ts-preview {
-  @apply flex h-full w-full items-center justify-center;
+  @apply flex w-full items-center justify-center;
 }
-.ts-preview img,
-.ts-preview svg {
+
+/* Draggable preview (pointer-driven pan) */
+.ts-preview-draggable {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.ts-preview-draggable:active {
+  cursor: grabbing;
+}
+.ts-preview-svg {
+  display: block;
   width: 100%;
-  height: 247px;
+  max-height: 44vh;
+}
+.ts-preview-svg > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 44vh;
+}
+
+.ts-mock-glyph {
+  touch-action: none;
+  cursor: grab;
+}
+.ts-mock-glyph:active {
+  cursor: grabbing;
+}
+.ts-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 44vh;
   object-fit: contain;
+}
+
+/* Neutral plate under white-back PNGs while @imgly matting runs.
+   Avoids mix-blend-mode: multiply, which crushes light letter colors. */
+.ts-preview-raster-plate {
+  background-color: #e8e8ea;
+  background-image: linear-gradient(
+      45deg,
+      #dcdcdf 25%,
+      transparent 25%
+    ),
+    linear-gradient(-45deg, #dcdcdf 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #dcdcdf 75%),
+    linear-gradient(-45deg, transparent 75%, #dcdcdf 75%);
+  background-size: 12px 12px;
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+}
+.ts-matting-hint {
+  @apply pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-ink-line bg-white/90 px-2.5 py-1 text-[11px] text-ink-muted shadow-soft;
 }
 
 /* Toast */

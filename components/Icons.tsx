@@ -42,6 +42,25 @@ export function DownloadIcon({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+export function CopyImageIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="14" height="14" rx="2" ry="2" />
+      <circle cx="9" cy="9" r="1.5" fill="currentColor" stroke="none" />
+      <path d="M5 15l4-4 3 3 4-5 3 3" />
+    </svg>
+  );
+}
+
 export function CopyIcon({ className = "h-4 w-4" }: IconProps) {
   return (
     <svg

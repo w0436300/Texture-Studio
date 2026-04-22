@@ -21,9 +21,10 @@ const STYLE_GUIDE = [
   "Ultra high-end 3D typographic poster in the style of a curated material-library showcase",
   "each letterform is an inflated, chunky, sculptural 3D object with soft rounded edges and believable weight",
   "every letter is rendered as a distinct premium physical material (candy, clay, knitted rope, moss, pearl chrome, iridescent glass, fluffy fur, polished metal, yarn, etc.) so the word reads like a curated material sampler",
-  "clean minimal composition on a pure off-white studio background (#fafafa)",
-  "soft diffuse studio lighting from above, gentle ambient occlusion, subtle contact shadows directly under each letter",
+  "transparent background with alpha channel (no solid backdrop, no paper, no wall, no floor plane)",
+  "soft diffuse studio lighting from above, gentle ambient occlusion, subtle self-shadowing only",
   "physically based rendering, crisp specular highlights appropriate to each material, realistic subsurface scattering where relevant",
+  "tight framing around the word with minimal top/bottom empty space",
   "no extra decoration, no watermark, no frame, no background props, no text other than the subject word",
 ].join(", ");
 
@@ -64,14 +65,30 @@ export function buildPrompt(input: PromptInput): BuiltPrompt {
 
   const layoutLine = layoutInstruction(input.layout, text);
 
+  const mixedPoster =
+    input.texture === "mixed"
+      ? [
+          `[Mixed poster] Each letter must read as a completely different premium physical object in one hero shot (curated material-library typography): e.g. soft grey stitched felt, hyper-real living moss, mirror-polished gold metal, fluffy cream wool fleece, glossy pink balloon plastic — chunky inflated 3D letterforms, same row, editorial product lighting.`,
+          `[Background] Prefer a clean pure white (#ffffff) infinite studio backdrop (high-key) so materials pop like a magazine cover; if alpha is required use full transparency instead — never busy props or floor clutter.`,
+        ].join(" ")
+      : "";
+
+  const threeNote =
+    "[Rendering] Per-glyph Three.js extruded text with MeshPhysicalMaterial; " +
+    "catalog materials moss/plush/felt/wood/marble/wax may use a separate square albedo tile from an image API once per (Unicode code point, material id), cached permanently client-side; all other materials are real-time PBR only.";
+
   const prompt = [
     `[Style] ${STYLE_GUIDE}.`,
     `[Subject] ${subject}.`,
+    mixedPoster,
     `[Layout] ${layoutLine}.`,
     `[Texture] emphasize authentic material detail, micro surface imperfections, believable lighting for the material.`,
     input.accent ? `[Color] subtle accent of ${input.accent}.` : `[Color] palette harmonized with the material, restrained and editorial.`,
     `[Quality] ${QUALITY}.`,
-  ].join("\n");
+    threeNote,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return { prompt, primary, perChar, seed };
 }

@@ -1,10 +1,146 @@
-import { Texture, TextureId, resolveTextures } from "./textures";
+import { makeGlyphFragmentCacheKey } from "./glyph-fragment-cache";
+import { Texture, TextureId, getTexture, resolveTextures } from "./textures";
 
 export interface MockInput {
   text: string;
   texture: TextureId;
   layout: "stacked" | "inline";
   seed?: number;
+  /**
+   * When set, `renderGlyph` is skipped for cache hits; fragments are still
+   * key-stable per (code point, texture id).
+   */
+  fragmentRead?: (key: string) => string | null;
+  fragmentWrite?: (key: string, fragment: string) => void;
+  /**
+   * When each entry matches a visible character, reuse server-resolved
+   * materials (avoids desync on mixed/random when re-building on the client).
+   */
+  perCharTextureIds?: TextureId[];
+}
+
+/** Serializable scene for client-side per-glyph drag (mock / SVG path only). */
+export interface MockInteractiveGlyph {
+  index: number;
+  char: string;
+  /** Resolved texture id for this glyph (for session fragment cache). */
+  materialId: string;
+  layoutX: number;
+  layoutY: number;
+  /** Local Y for rotate(θ, 0, anchorY) — typographic center vs baseline. */
+  rotateAnchorY: number;
+  /** Inner SVG markup (safe: only server-built & escaped char content). */
+  fragment: string;
+}
+
+export interface MockInteractiveScene {
+  viewWidth: number;
+  viewHeight: number;
+  defs: string;
+  glyphs: MockInteractiveGlyph[];
+  label: string;
+}
+
+/**
+ * Layout + defs + per-letter SVG fragments (glyphs drawn at local 0,0 then
+ * placed with `<g transform="translate(x,y)">` on the client or in flat SVG).
+ */
+export function buildMockInteractiveScene(input: MockInput): MockInteractiveScene {
+  const text = (input.text || "Sample").trim() || "Sample";
+  const chars = Array.from(text);
+  const { primary, perChar } = (() => {
+    if (
+      input.perCharTextureIds &&
+      input.perCharTextureIds.length === chars.length
+    ) {
+      const fromIds = input.perCharTextureIds.map((id) => getTexture(id));
+      return { primary: fromIds[0] ?? getTexture("clay"), perChar: fromIds };
+    }
+    return resolveTextures(input.texture, text);
+  })();
+  const seed = input.seed ?? Math.floor(Math.random() * 1_000_000);
+  void seed;
+
+  const width = 1024;
+  const rows = input.layout === "stacked" ? splitIntoRows(chars) : [chars];
+
+  const maxCols = Math.max(...rows.map((r) => r.length));
+  const fontSize = Math.floor((width * 0.92) / Math.max(maxCols, 1) / 0.6);
+  const lineHeight = Math.floor(fontSize * 1.04);
+  const totalTextHeight = lineHeight * rows.length;
+  const padY = Math.floor(fontSize * 0.35);
+  const height = totalTextHeight + padY * 2;
+  const startY = padY + fontSize * 0.85;
+  const rotateAnchorY = -fontSize * 0.35;
+
+  const defs: string[] = [];
+  const filterIds = new Set<string>();
+  const defBlockSeen = new Set<string>();
+  const glyphs: MockInteractiveGlyph[] = [];
+
+  const advance = fontSize * 0.6;
+  rows.forEach((row, ri) => {
+    const y = startY + ri * lineHeight;
+    const rowWidth = row.length * advance;
+    let x = (width - rowWidth) / 2 + advance / 2;
+    row.forEach((ch, ci) => {
+      const globalIndex = rowIndexOffset(rows, ri) + ci;
+      const tex = perChar ? perChar[globalIndex] ?? primary : primary;
+      const cp = ch.codePointAt(0) ?? 0;
+      const defKey = `glyph${cp}-${tex.id}`;
+      ensureTextureDefs(defs, filterIds, defBlockSeen, tex, defKey);
+      const cacheKey = makeGlyphFragmentCacheKey(cp, tex.id);
+      const fromCache = input.fragmentRead?.(cacheKey) ?? null;
+      let fragment: string;
+      if (fromCache) {
+        fragment = fromCache;
+      } else {
+        fragment = renderGlyph(ch, 0, 0, fontSize, tex, defKey);
+        input.fragmentWrite?.(cacheKey, fragment);
+      }
+      glyphs.push({
+        index: globalIndex,
+        char: ch,
+        materialId: tex.id,
+        layoutX: x,
+        layoutY: y,
+        rotateAnchorY,
+        fragment,
+      });
+      x += advance;
+    });
+  });
+
+  return {
+    viewWidth: width,
+    viewHeight: height,
+    defs: defs.join("\n"),
+    glyphs,
+    label: text,
+  };
+}
+
+/** One pass: shared by flat SVG, interactive scene, and fragment cache. */
+export function buildMockOutput(input: MockInput): {
+  scene: MockInteractiveScene;
+  svg: string;
+} {
+  const scene = buildMockInteractiveScene(input);
+  const text = (input.text || "Sample").trim() || "Sample";
+  const body = scene.glyphs
+    .map(
+      (g) =>
+        `<g transform="translate(${g.layoutX},${g.layoutY})">${g.fragment}</g>`,
+    )
+    .join("\n");
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.viewWidth} ${scene.viewHeight}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(text)}">
+  <defs>
+    ${scene.defs}
+  </defs>
+  ${body}
+</svg>`;
+  return { scene, svg };
 }
 
 /**
@@ -13,62 +149,7 @@ export interface MockInput {
  * or when TEXTURE_STUDIO_MOCK=1). Keeps the UX intact with no crash.
  */
 export function renderMockSvg(input: MockInput): string {
-  const text = (input.text || "Sample").trim() || "Sample";
-  const { primary, perChar } = resolveTextures(input.texture, text);
-  const seed = input.seed ?? Math.floor(Math.random() * 1_000_000);
-
-  const width = 1024;
-  const height = 1024;
-  const chars = Array.from(text);
-  const rows = input.layout === "stacked" ? splitIntoRows(chars) : [chars];
-
-  const maxCols = Math.max(...rows.map((r) => r.length));
-  const fontSize = Math.floor(
-    Math.min(
-      (width * 0.82) / Math.max(maxCols, 1) / 0.58,
-      (height * 0.82) / rows.length / 1.1,
-    ),
-  );
-  const lineHeight = Math.floor(fontSize * 1.02);
-  const totalHeight = lineHeight * rows.length;
-  const startY = (height - totalHeight) / 2 + fontSize * 0.82;
-
-  const defs: string[] = [];
-  const filterIds = new Set<string>();
-  const glyphs: string[] = [];
-
-  rows.forEach((row, ri) => {
-    const y = startY + ri * lineHeight;
-    const rowWidth = row.length * fontSize * 0.6;
-    let x = (width - rowWidth) / 2 + fontSize * 0.3;
-    row.forEach((ch, ci) => {
-      const globalIndex = rowIndexOffset(rows, ri) + ci;
-      const tex = perChar ? perChar[globalIndex] ?? primary : primary;
-      const key = `tex-${tex.id}-${ri}-${ci}`;
-      ensureTextureDefs(defs, filterIds, tex, key);
-      glyphs.push(renderGlyph(ch, x, y, fontSize, tex, key));
-      x += fontSize * 0.6;
-    });
-  });
-
-  const bg = `<rect width="100%" height="100%" fill="#fafafa"/>`;
-  const grain = `
-    <filter id="paperGrain" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${seed % 100}"/>
-      <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.04 0"/>
-    </filter>
-    <rect width="100%" height="100%" filter="url(#paperGrain)" opacity="0.7"/>
-  `;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-  <defs>
-    ${defs.join("\n")}
-  </defs>
-  ${bg}
-  ${glyphs.join("\n")}
-  ${grain}
-</svg>`;
+  return buildMockOutput(input).svg;
 }
 
 function splitIntoRows(chars: string[]): string[][] {
@@ -108,9 +189,12 @@ function esc(s: string): string {
 function ensureTextureDefs(
   defs: string[],
   filters: Set<string>,
+  defBlockSeen: Set<string>,
   tex: Texture,
   key: string,
 ): void {
+  if (defBlockSeen.has(key)) return;
+  defBlockSeen.add(key);
   const { palette, mockStyle } = tex;
   const gradId = `${key}-grad`;
 
@@ -315,4 +399,12 @@ function renderGlyph(
 export function svgToDataUrl(svg: string): string {
   const encoded = Buffer.from(svg, "utf-8").toString("base64");
   return `data:image/svg+xml;base64,${encoded}`;
+}
+
+/** Browser-friendly data URL (used by client mock fallback). */
+export function svgToDataUrlClient(svg: string): string {
+  if (typeof btoa === "undefined") {
+    return svgToDataUrl(svg);
+  }
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
 }
