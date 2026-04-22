@@ -9,6 +9,16 @@ export type ThreeMaterialParams = {
   clearcoatRoughness: number;
   emissive?: number;
   envMapIntensity: number;
+  // Physically-based extras (Three.js MeshPhysicalMaterial)
+  transmission?: number;
+  thickness?: number;
+  ior?: number;
+  iridescence?: number;
+  iridescenceIOR?: number;
+  iridescenceThicknessRange?: [number, number];
+  sheen?: number;
+  sheenColor?: number;
+  sheenRoughness?: number;
 };
 
 const DEFAULT_PARAMS: ThreeMaterialParams = {
@@ -22,44 +32,67 @@ const DEFAULT_PARAMS: ThreeMaterialParams = {
 
 const PRESETS: Partial<Record<TextureId, ThreeMaterialParams>> = {
   chrome: {
-    color: 0xb8c4d8,
-    metalness: 0.98,
-    roughness: 0.12,
-    clearcoat: 0.85,
-    clearcoatRoughness: 0.12,
-    envMapIntensity: 1.35,
+    color: 0xd0d8e8,
+    metalness: 1.0,
+    roughness: 0.06,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
+    envMapIntensity: 2.2,
   },
   gold: {
-    color: 0xd4a84b,
-    metalness: 0.92,
-    roughness: 0.22,
-    clearcoat: 0.45,
-    clearcoatRoughness: 0.25,
-    envMapIntensity: 1.15,
+    color: 0xffc040,
+    metalness: 0.96,
+    roughness: 0.15,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.2,
+    envMapIntensity: 1.8,
   },
   glass: {
-    color: 0xa8d8f0,
-    metalness: 0.05,
-    roughness: 0.08,
-    clearcoat: 1,
-    clearcoatRoughness: 0.05,
-    envMapIntensity: 1.2,
+    color: 0xf0f8ff,
+    metalness: 0,
+    roughness: 0.02,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    envMapIntensity: 1.8,
+    transmission: 0.92,
+    thickness: 2.0,
+    ior: 1.5,
   },
   crystal: {
-    color: 0xe8f4ff,
-    metalness: 0.12,
-    roughness: 0.06,
-    clearcoat: 1,
+    color: 0xf4f8ff,
+    metalness: 0.05,
+    roughness: 0.04,
+    clearcoat: 1.0,
     clearcoatRoughness: 0.04,
-    envMapIntensity: 1.4,
+    envMapIntensity: 2.0,
+    transmission: 0.88,
+    thickness: 1.8,
+    ior: 1.7,
   },
   holographic: {
-    color: 0xc9b2ff,
-    metalness: 0.55,
-    roughness: 0.18,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.15,
-    envMapIntensity: 1.5,
+    color: 0xffffff,
+    metalness: 0.4,
+    roughness: 0.06,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
+    envMapIntensity: 2.2,
+    iridescence: 1.0,
+    iridescenceIOR: 1.3,
+    iridescenceThicknessRange: [100, 400],
+  },
+  bubble: {
+    color: 0xffffff,
+    metalness: 0.08,
+    roughness: 0.05,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    envMapIntensity: 2.0,
+    transmission: 0.55,
+    thickness: 0.3,
+    ior: 1.2,
+    iridescence: 0.85,
+    iridescenceIOR: 1.2,
+    iridescenceThicknessRange: [150, 320],
   },
   neon: {
     color: 0xff4fd8,
@@ -76,55 +109,61 @@ const PRESETS: Partial<Record<TextureId, ThreeMaterialParams>> = {
     roughness: 0.92,
     clearcoat: 0,
     clearcoatRoughness: 0.5,
-    envMapIntensity: 0.35,
+    envMapIntensity: 0.4,
   },
   wood: {
     color: 0x8b6544,
     metalness: 0,
-    roughness: 0.78,
-    clearcoat: 0.12,
-    clearcoatRoughness: 0.55,
-    envMapIntensity: 0.45,
+    roughness: 0.75,
+    clearcoat: 0.15,
+    clearcoatRoughness: 0.5,
+    envMapIntensity: 0.55,
   },
   marble: {
     color: 0xe8e4e8,
     metalness: 0.02,
-    roughness: 0.35,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.3,
-    envMapIntensity: 0.85,
+    roughness: 0.3,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.25,
+    envMapIntensity: 1.0,
   },
   clay: {
-    color: 0xc9987a,
+    color: 0xd4937a,
     metalness: 0,
-    roughness: 0.88,
-    clearcoat: 0.08,
-    clearcoatRoughness: 0.6,
-    envMapIntensity: 0.4,
+    roughness: 0.84,
+    clearcoat: 0.06,
+    clearcoatRoughness: 0.5,
+    envMapIntensity: 0.5,
   },
   ceramic: {
-    color: 0xf2f0ea,
-    metalness: 0.08,
-    roughness: 0.28,
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.18,
-    envMapIntensity: 0.95,
+    color: 0xf0ece4,
+    metalness: 0.0,
+    roughness: 0.18,
+    clearcoat: 0.85,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 1.3,
   },
   plush: {
-    color: 0xc4a882,
+    color: 0xdfc8a8,
+    metalness: 0,
+    roughness: 0.9,
+    clearcoat: 0,
+    clearcoatRoughness: 0.5,
+    envMapIntensity: 0.4,
+    sheen: 1.0,
+    sheenColor: 0xfff5e0,
+    sheenRoughness: 0.75,
+  },
+  felt: {
+    color: 0x8a7060,
     metalness: 0,
     roughness: 0.95,
     clearcoat: 0,
     clearcoatRoughness: 0.5,
     envMapIntensity: 0.3,
-  },
-  felt: {
-    color: 0x7a6a58,
-    metalness: 0,
-    roughness: 0.97,
-    clearcoat: 0,
-    clearcoatRoughness: 0.5,
-    envMapIntensity: 0.28,
+    sheen: 0.85,
+    sheenColor: 0xd4a882,
+    sheenRoughness: 0.8,
   },
   paper: {
     color: 0xf5f2e8,
@@ -137,26 +176,29 @@ const PRESETS: Partial<Record<TextureId, ThreeMaterialParams>> = {
   latex: {
     color: 0x1a1a1e,
     metalness: 0.35,
-    roughness: 0.42,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.22,
-    envMapIntensity: 0.75,
+    roughness: 0.38,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.18,
+    envMapIntensity: 0.9,
   },
   jelly: {
     color: 0xff9ec4,
     metalness: 0.02,
-    roughness: 0.15,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.12,
-    envMapIntensity: 0.9,
+    roughness: 0.1,
+    clearcoat: 0.95,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: 1.1,
+    transmission: 0.45,
+    thickness: 0.8,
+    ior: 1.35,
   },
   wax: {
     color: 0xf0d890,
     metalness: 0.02,
-    roughness: 0.55,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.35,
-    envMapIntensity: 0.55,
+    roughness: 0.52,
+    clearcoat: 0.4,
+    clearcoatRoughness: 0.32,
+    envMapIntensity: 0.65,
   },
   stone: {
     color: 0x8a8a8c,
@@ -169,18 +211,10 @@ const PRESETS: Partial<Record<TextureId, ThreeMaterialParams>> = {
   rubber: {
     color: 0x2a2a2e,
     metalness: 0.08,
-    roughness: 0.78,
-    clearcoat: 0.25,
-    clearcoatRoughness: 0.45,
-    envMapIntensity: 0.45,
-  },
-  bubble: {
-    color: 0xffb8e8,
-    metalness: 0.04,
-    roughness: 0.22,
-    clearcoat: 0.75,
-    clearcoatRoughness: 0.18,
-    envMapIntensity: 0.85,
+    roughness: 0.72,
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.4,
+    envMapIntensity: 0.5,
   },
 };
 
@@ -192,7 +226,7 @@ export function createPhysicalMaterialForTexture(
   id: TextureId,
 ): THREE.MeshPhysicalMaterial {
   const p = getThreeMaterialParams(id);
-  return new THREE.MeshPhysicalMaterial({
+  const mat = new THREE.MeshPhysicalMaterial({
     color: p.color,
     metalness: p.metalness,
     roughness: p.roughness,
@@ -202,4 +236,19 @@ export function createPhysicalMaterialForTexture(
     emissiveIntensity: p.emissive ? 0.35 : 0,
     envMapIntensity: p.envMapIntensity,
   });
+  if (p.transmission !== undefined) {
+    mat.transmission = p.transmission;
+    mat.transparent = true;
+  }
+  if (p.thickness !== undefined) mat.thickness = p.thickness;
+  if (p.ior !== undefined) mat.ior = p.ior;
+  if (p.iridescence !== undefined) mat.iridescence = p.iridescence;
+  if (p.iridescenceIOR !== undefined) mat.iridescenceIOR = p.iridescenceIOR;
+  if (p.iridescenceThicknessRange !== undefined) {
+    mat.iridescenceThicknessRange = p.iridescenceThicknessRange;
+  }
+  if (p.sheen !== undefined) mat.sheen = p.sheen;
+  if (p.sheenColor !== undefined) mat.sheenColor = new THREE.Color(p.sheenColor);
+  if (p.sheenRoughness !== undefined) mat.sheenRoughness = p.sheenRoughness;
+  return mat;
 }

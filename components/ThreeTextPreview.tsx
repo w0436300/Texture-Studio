@@ -12,6 +12,7 @@ import * as THREE from "three";
 import type { Font } from "three/examples/jsm/loaders/FontLoader.js";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { GlyphUnit } from "@/lib/ascii-glyphs";
 import { asciiGlyphUnits } from "@/lib/ascii-glyphs";
 import {
@@ -139,33 +140,43 @@ export const ThreeTextPreview = forwardRef<
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    scene.background = null;
+    // Light studio background — matches reference aesthetic
+    scene.background = new THREE.Color(0xf2f2f4);
 
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 2500);
-    camera.position.set(0, 36, 520);
+    camera.position.set(0, 10, 500);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      alpha: true,
+      alpha: false,
       preserveDrawingBuffer: true,
       powerPreference: "high-performance",
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
     renderer.domElement.style.touchAction = "none";
     mount.appendChild(renderer.domElement);
 
-    const amb = new THREE.AmbientLight(0xffffff, 0.42);
+    // Neutral room environment — provides env reflections for metals / glass
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envTexture = pmrem.fromScene(new RoomEnvironment()).texture;
+    scene.environment = envTexture;
+    pmrem.dispose();
+
+    // Studio lighting tuned for light background
+    const amb = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(amb);
-    const key = new THREE.DirectionalLight(0xffffff, 1.25);
-    key.position.set(120, 180, 260);
+    const key = new THREE.DirectionalLight(0xffffff, 1.05);
+    key.position.set(120, 200, 300);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xaaccff, 0.45);
-    rim.position.set(-180, 40, -120);
+    const rim = new THREE.DirectionalLight(0xb8d4ff, 0.5);
+    rim.position.set(-200, 60, -80);
     scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xffeedd, 0.22);
-    fill.position.set(-40, -60, 180);
+    const fill = new THREE.DirectionalLight(0xfff0e8, 0.28);
+    fill.position.set(-60, -80, 200);
     scene.add(fill);
 
     const root = new THREE.Group();
@@ -315,6 +326,7 @@ export const ThreeTextPreview = forwardRef<
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", onDblClick);
       disposeLetters(ctx);
+      envTexture.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
@@ -358,8 +370,7 @@ export const ThreeTextPreview = forwardRef<
   return (
     <div
       className={[
-        "ts-three-preview relative w-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-ink-line bg-[#0e0e12]",
-        /* Fixed height avoids % / min-height + flex circular layout (insane clientHeight). */
+        "ts-three-preview relative w-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-ink-line bg-[#f2f2f4]",
         "h-[min(52vh,520px)]",
         className ?? "",
       ]
@@ -368,11 +379,11 @@ export const ThreeTextPreview = forwardRef<
     >
       <div ref={mountRef} className="absolute inset-0 min-h-0 w-full" />
       {loadError && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0e0e12]/90 text-xs text-white/70">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#f2f2f4]/90 text-xs text-black/60">
           {loadError}
         </div>
       )}
-      <div className="pointer-events-none absolute bottom-2 left-3 right-3 text-[10px] text-white/45">
+      <div className="pointer-events-none absolute bottom-2 left-3 right-3 text-[10px] text-black/30">
         Three.js · 逐字挤出 · 拖动平移 · Shift+拖动旋转 · 双击还原 · 布局存
         sessionStorage · 材质与左侧选项联动 (ASCII)
       </div>
@@ -445,8 +456,9 @@ function buildLetters(
   const { font, root } = ctx;
   if (!font) return;
 
+  // Puffier / inflated letter style — bigger bevel, more depth, smoother curves
   const size = 52;
-  const depth = 16;
+  const depth = 22;
 
   for (const u of units) {
     const matId = matIds[u.sourceIndex] ?? "clay";
@@ -455,12 +467,12 @@ function buildLetters(
       font,
       size,
       depth,
-      curveSegments: 8,
+      curveSegments: 12,
       bevelEnabled: true,
-      bevelThickness: 2.2,
-      bevelSize: 1,
+      bevelThickness: 4,
+      bevelSize: 3,
       bevelOffset: 0,
-      bevelSegments: 2,
+      bevelSegments: 5,
     });
     geo.computeBoundingBox();
     const bb = geo.boundingBox;
@@ -480,6 +492,12 @@ function buildLetters(
   ctx.scene.updateMatrixWorld(true);
 }
 
+/**
+ * Scatter letters across the canvas — alternating y-stagger, slight z-depth
+ * variation, and per-letter rotation to match the inflated 3D sculpture
+ * reference aesthetic. Layout is deterministic per (index, codepoint) so
+ * double-click always restores the same "home" positions.
+ */
 function layoutLetterGroups(
   ctx: PreviewCtx,
   units: GlyphUnit[],
@@ -489,33 +507,52 @@ function layoutLetterGroups(
   if (!font || letterGroups.length === 0) return;
 
   const size = 52;
-  const gap = 8;
-  let x = 0;
-  letterGroups.forEach((g, i) => {
+  const gap = 6;
+
+  // Measure each letter's width with a cheap no-bevel geometry
+  const widths: number[] = [];
+  for (let i = 0; i < letterGroups.length; i++) {
     const u = units[i];
-    if (!u) return;
+    if (!u) { widths.push(size * 0.6); continue; }
     const tmp = new TextGeometry(u.ch, {
-      font,
-      size,
-      depth: 16,
-      curveSegments: 4,
-      bevelEnabled: false,
+      font, size, depth: 16, curveSegments: 4, bevelEnabled: false,
     });
     tmp.computeBoundingBox();
-    const w = tmp.boundingBox
-      ? tmp.boundingBox.max.x - tmp.boundingBox.min.x
-      : size * 0.6;
+    widths.push(
+      tmp.boundingBox ? tmp.boundingBox.max.x - tmp.boundingBox.min.x : size * 0.6,
+    );
     tmp.dispose();
+  }
 
-    const half = w / 2 + gap / 2;
-    g.position.set(x + half, 0, 0);
+  const totalWidth = widths.reduce((s, w) => s + w + gap, 0) - gap;
+  let x = -totalWidth / 2;
+
+  letterGroups.forEach((g, i) => {
+    const u = units[i];
+    const w = widths[i] ?? size * 0.6;
+    const cp = u?.ch.codePointAt(0) ?? 65;
+
+    // Deterministic seed per (position, character) → consistent layout
+    const s = (i + 1) * 97 + cp * 31;
+
+    // Alternating base y-offset ±22 units (~42% of letter height) with added variance
+    const yBase = (i % 2 === 0 ? 1 : -1) * 22;
+    const yNoise = (hash(s + 1) - 0.5) * 14;
+    const xNoise = (hash(s + 2) - 0.5) * 8;
+    const zNoise = (hash(s + 3) - 0.5) * 20;
+    const rotZ = (hash(s + 4) - 0.5) * 0.28; // ±~8°
+
+    g.position.set(x + w / 2 + xNoise, yBase + yNoise, zNoise);
+    g.rotation.set(0, 0, rotZ);
+
     x += w + gap;
   });
-  const total = x - gap;
-  const offset = -total / 2;
-  letterGroups.forEach((g) => {
-    g.position.x += offset;
-  });
+}
+
+/** Deterministic float in [0, 1) for the given integer seed. */
+function hash(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
 }
 
 function useDebounced<T>(value: T, ms: number): T {
