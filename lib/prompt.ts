@@ -68,14 +68,14 @@ export function buildPrompt(input: PromptInput): BuiltPrompt {
   const mixedPoster =
     input.texture === "mixed"
       ? [
-          `[Mixed poster] Each letter must read as a completely different premium physical object in one hero shot (curated material-library typography): e.g. soft grey stitched felt, hyper-real living moss, mirror-polished gold metal, fluffy cream wool fleece, glossy pink balloon plastic — chunky inflated 3D letterforms, same row, editorial product lighting.`,
+          `[Mixed poster] Each letter must read as a completely different premium physical object in one hero shot (curated material-library typography): e.g. cable-knit wool, hyper-real living moss, mirror-polished chrome, fluffy plush fleece, glossy jelly plastic — chunky inflated 3D letterforms, same row, editorial product lighting.`,
           `[Background] Prefer a clean pure white (#ffffff) infinite studio backdrop (high-key) so materials pop like a magazine cover; if alpha is required use full transparency instead — never busy props or floor clutter.`,
         ].join(" ")
       : "";
 
   const threeNote =
     "[Rendering] Per-glyph Three.js extruded text with MeshPhysicalMaterial; " +
-    "catalog materials moss/plush/felt/wood/marble/wax may use a separate square albedo tile from an image API once per (Unicode code point, material id), cached permanently client-side; all other materials are real-time PBR only.";
+    "materials moss/plush/knit/wood may use a separate square albedo tile from an image API once per (Unicode code point, material id), cached permanently client-side; chrome/gold/glass/ice/holographic/copper/chocolate/ceramic and all other catalog ids are real-time PBR only.";
 
   const prompt = [
     `[Style] ${STYLE_GUIDE}.`,

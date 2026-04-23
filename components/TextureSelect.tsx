@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TEXTURES, Texture, TextureId } from "@/lib/textures";
+import { getTexture, TEXTURES_FOR_UI, Texture, TextureId } from "@/lib/textures";
 
 interface Props {
   value: TextureId;
@@ -13,8 +13,7 @@ export function TextureSelect({ value, onChange, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const selected: Texture =
-    TEXTURES.find((t) => t.id === value) ?? TEXTURES[0];
+  const selected: Texture = getTexture(value);
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -43,7 +42,9 @@ export function TextureSelect({ value, onChange, disabled }: Props) {
         aria-expanded={open}
       >
         <span className="truncate text-left">
-          {selected.id === "random" || selected.id === "mixed" ? (
+          {selected.id === "random" ||
+          selected.id === "mixed" ||
+          selected.id === "spriteCache" ? (
             selected.zh
           ) : (
             <>
@@ -57,7 +58,7 @@ export function TextureSelect({ value, onChange, disabled }: Props) {
 
       {open && (
         <ul className="ts-dropdown" role="listbox">
-          {TEXTURES.map((t) => (
+          {TEXTURES_FOR_UI.map((t) => (
             <li
               key={t.id}
               role="option"
@@ -72,7 +73,9 @@ export function TextureSelect({ value, onChange, disabled }: Props) {
               <span className="flex items-center gap-2">
                 <Check className="check" />
                 <span>{t.zh}</span>
-                {t.id !== "random" && t.id !== "mixed" && (
+                {t.id !== "random" &&
+                  t.id !== "mixed" &&
+                  t.id !== "spriteCache" && (
                   <span className="text-ink-muted">{t.en}</span>
                 )}
               </span>

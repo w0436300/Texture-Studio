@@ -1,119 +1,79 @@
 # Texture Studio · 材质字效生成器
 
-将普通文字一键生成具有 **高级材质 + 堆叠感** 的 3D 视觉海报。
-基于 Next.js + Gemini Image Model,内置 SVG Mock 渲染保证无 API 也能预览。
+基于 Next.js + Three.js + Gemini 的文字材质实验场。当前主流程是 **ASCII 文本走 Three 逐字预览**，并支持 **AI 单字拼贴缓存演示**。
 
 ![preview](./assets/preview.svg)
 
-## ✨ Features
+## Features
 
-- **文字输入**:中英文任意字符串,fallback 默认 `Sample`。
-- **材质系统**:内置 20+ 预设材质(Clay / Glass / Plush / Chrome / Moss / Ceramic / Jelly / Latex / Paper / Felt / Marble / Holographic / Wood / Gold / Wax / Stone / Rubber / Crystal / Bubblegum / Neon …)。
-  - `随机材质` · 随机挑选
-  - `混合材质` · 每个字符使用不同材质
-- **Prompt Engine**:`[Style] + [Subject] + [Layout] + [Texture] + [Color] + [Quality]` 结构化 Prompt。
-- **Image API**:`POST /api/generate`,优先调用 Gemini,任何异常自动降级到本地 Mock。
-- **Mock 模式**:无 API Key 或 API 失败时返回可读的 SVG 预览,保证 UX 不中断。
-- **导出**:一键下载、复制 Prompt、随机重生成。
-- **错误处理**:200 / 405 / 500 / network error 全部有 fallback,UI 永远不崩。
+- **Two ASCII preview modes**
+  - `结合预览`：Three 挤出字母 + PBR 材质（可选有机贴图）
+  - `AI 单字拼贴`：按 `(字母码点 + 材质 id)` 读取/生成单字 PNG，支持拖拽、旋转、缩放
+- **Material rails**
+  - **Three PBR（不调图像 API）**：`chrome` / `gold` / `glass` / `ceramic` / `holographic` / `jelly` 等
+  - **AI tile（按需补图）**：`moss` / `plush` / `knit` / `wood`
+- **Cost control**
+  - Gemini 图像调用（单字 sprite + HD tile）共用每日配额：`10` 次（浏览器本地计数）
+  - 默认 `仅使用已缓存（演示）`，不调图像接口
+  - 达到配额后自动强制仅缓存模式
+- **缓存材质模式**
+  - 新增 `缓存材质 (spriteCache)`：每个字母可从该码点已有缓存里选任意材质
+  - 每次 Generate 会轮换已有材质，不固定一套
+- **Sprite persistence**
+  - localStorage: `sprite_*`
+  - 可导出/导入 JSON
+  - 可同步到仓库文件 `public/ai-letter-sprite-fixtures/sprites.json`（便于 git 共享）
+- **Background removal**
+  - 新生成单字：始终抠底一次
+  - 历史缓存：每个 `(码点,材质)` 最多补救抠底一次（`sprite_matted_v1_*` 标记），避免反复重跑导致卡顿
 
-## 🧱 Tech Stack
-
-- [Next.js 14 (App Router)](https://nextjs.org)
-- React 18, TypeScript
-- TailwindCSS
-- [@google/genai](https://www.npmjs.com/package/@google/genai) for Gemini Image
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# 1. install
 npm install
-
-# 2. configure env
 cp .env.example .env.local
-# edit .env.local and paste your GEMINI_API_KEY
-
-# 3. dev
 npm run dev
-# -> http://localhost:3000
 ```
 
-如果不填 `GEMINI_API_KEY`,应用会自动使用本地 SVG 预览,所有功能依然可用。
+打开 [http://localhost:3000](http://localhost:3000)。
 
-## 🔧 Environment Variables
+## Environment Variables
 
 | Name | Required | Description |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | optional | Google Gemini API Key。未填写时走本地 mock。 |
-| `GEMINI_IMAGE_MODEL` | optional | 默认 `gemini-2.5-flash-image`。 |
-| `TEXTURE_STUDIO_MOCK` | optional | 设为 `1` 可强制走 mock(用于本地 UX 调优)。 |
+| `GEMINI_API_KEY` | Optional | Gemini key。未配置时无法生成新图，但缓存演示可用。 |
+| `GEMINI_IMAGE_MODEL` | Optional | 默认 `gemini-2.5-flash-image` |
+| `GEMINI_LETTER_SPRITE_MODEL` | Optional | 单字 sprite 专用模型，未填则回退到 `GEMINI_IMAGE_MODEL` |
+| `GEMINI_HD_MATERIAL_MODEL` | Optional | HD tile 专用模型，未填则回退到 `GEMINI_IMAGE_MODEL` |
+| `TEXTURE_STUDIO_MOCK` | Optional | `1` 强制 mock（用于调试） |
+| `ALLOW_SPRITE_DISK_WRITE` | Optional | `production` 下允许 `POST /api/saveAiSpriteFixtures` 写 `public/ai-letter-sprite-fixtures/sprites.json` |
 
-## 🧠 Prompt Structure
+## API (current)
 
-```
-[Style]   ultra high-end 3D typographic poster, clean minimal composition …
-[Subject] the word "MOCK REVIEW" rendered entirely in chrome — mirror finish …
-[Layout]  arrange the characters on a single clean inline row, evenly spaced …
-[Texture] emphasize authentic material detail, micro surface imperfections …
-[Color]   palette harmonized with the material, restrained and editorial.
-[Quality] 8k, extremely sharp, octane/cinema4d render feel, editorial poster look.
-```
+- `POST /api/generate`
+  - ASCII 正常返回 `source: "three"`（用于 Three/拼贴流程）
+  - 非 ASCII 返回 `source: "mock"`（SVG）
+  - 不再返回 `source: "gemini"` 整图
+- `POST /api/generateLetterSprite`
+  - 生成单字 PNG（随后客户端抠底并缓存）
+- `POST /api/generateHdMaterial`
+  - 生成有机材质方形 tile（`moss/plush/knit/wood`）
+- `POST /api/saveAiSpriteFixtures`
+  - 将单条 sprite 合并写入 `public/ai-letter-sprite-fixtures/sprites.json`（本地开发默认可写）
 
-## 🔁 API
+## Storage Keys
 
-### `POST /api/generate`
+- `sprite_<codePoint>_<textureId>`：单字 PNG（base64）
+- `mat_<codePoint>_<textureId>`：HD tile（base64）
+- `sprite_matted_v1_<codePoint>_<textureId>`：该 sprite 是否已做过一次抠底补救
+- `ts_gemini_img_daily_v1`：每日 Gemini 图像配额计数
+- `ts_gemini_cache_only_v1`：仅缓存演示开关
 
-**Request**
+## Project Structure (key files)
 
-```json
-{
-  "text": "MOCK REVIEW",
-  "texture": "random",
-  "layout": "inline"
-}
-```
-
-**Response**
-
-```json
-{
-  "ok": true,
-  "source": "gemini",            // or "mock"
-  "prompt": "[Style] …",
-  "texture": "chrome",
-  "mimeType": "image/png",
-  "imageUrl": "data:image/png;base64,…"
-}
-```
-
-| 状态 | 行为 |
-| --- | --- |
-| 200 (gemini) | 正常展示 AI 图像 |
-| 200 (mock)   | 以 SVG 预览替代,UI 显示"本地预览"提示 |
-| 405 / 500    | 客户端自动降级到 mock 并提示 |
-| network err  | 客户端本地 SVG fallback |
-
-## 📁 Project Structure
-
-```
-app/
-  api/generate/route.ts   # Gemini + mock fallback
-  layout.tsx
-  page.tsx                # Main UI
-  globals.css
-components/
-  TextureSelect.tsx
-  Icons.tsx
-lib/
-  textures.ts             # 20+ texture catalog
-  prompt.ts               # Prompt engine
-  mock.ts                 # SVG mock renderer
-```
-
-## 🗺 Roadmap
-
-- [ ] Layout: stacked 多行雕塑感排布
-- [ ] Batch generate (N 张一起出)
-- [ ] 历史记录与收藏
-- [ ] 自定义材质 descriptor
+- `app/page.tsx`：主 UI、模式切换、额度与导入导出
+- `components/AiLetterStrip.tsx`：单字拼贴、缓存加载、一次性抠底补救
+- `lib/textures.ts`：材质目录、picker 列表、`spriteCache` 逻辑
+- `lib/ai-letter-sprite-cache.ts`：sprite 缓存/fixtures/备份
+- `lib/gemini-daily-limit.ts`：每日配额管理
+- `app/api/*`：生成与落盘接口

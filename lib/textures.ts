@@ -1,16 +1,23 @@
 export type TextureId =
   | "random"
   | "mixed"
+  /** Per-glyph: use any cached AI letter sprite for that code point (localStorage + fixtures). */
+  | "spriteCache"
   | "clay"
   | "glass"
+  | "ice"
   | "plush"
+  | "knit"
   | "chrome"
+  | "copper"
   | "moss"
   | "ceramic"
+  | "chocolate"
   | "jelly"
   | "latex"
   | "paper"
   | "felt"
+  | "feltChrome"
   | "marble"
   | "holographic"
   | "wood"
@@ -62,22 +69,25 @@ export interface Texture {
 }
 
 /**
- * 有机 / 强微观纹理：工程上优先用 **AI 生成方形贴图** 贴到挤出 mesh，
- * 结果按 `mat_{codePoint}_{textureId}` 永久缓存在 localStorage；其余材质由
- * Three.js PBR 直接渲染（$0）。
+ * **AI 贴图轨**（Gemini）：仅苔藓 / 毛绒 / 针织 / 木纹 — 生成方形 albedo tile
+ * 贴到挤出 mesh，按 `mat_{codePoint}_{textureId}` 永久缓存在 localStorage；
+ * **同一 (字母 Unicode 码点, 材质 id) 只请求一次**。
+ *
+ * **Three 轨**（秒出）：铬 / 金 / 玻璃 / 冰 / 镭射 / 铜 / 巧克力 / 陶瓷等其余
+ * concrete id — `MeshPhysicalMaterial` PBR，不调图像生成 API。
  */
 const AI_TEXTURE_MATERIAL_IDS = new Set<TextureId>([
   "moss",
   "plush",
-  "felt",
+  "knit",
   "wood",
-  "marble",
-  "wax",
 ]);
 
-/** `random` / `mixed` 为入口态；判断时请用 resolve 后的具体 id。 */
+const META_TEXTURE_IDS = new Set<TextureId>(["random", "mixed", "spriteCache"]);
+
+/** `random` / `mixed` / `spriteCache` 为入口态；判断时请用 resolve 后的具体 id。 */
 export function isAiTextureMaterial(id: TextureId): boolean {
-  if (id === "random" || id === "mixed") return false;
+  if (META_TEXTURE_IDS.has(id)) return false;
   return AI_TEXTURE_MATERIAL_IDS.has(id);
 }
 
@@ -100,6 +110,15 @@ export const TEXTURES: Texture[] = [
     mockStyle: "iridescent",
   },
   {
+    id: "spriteCache",
+    zh: "缓存材质",
+    en: "Cached letters",
+    descriptor:
+      "demo / cache mode: each glyph uses the first available cached AI letter sprite for that Unicode code point, regardless of which concrete material key it was stored under",
+    palette: { base: "#e8e8ea", highlight: "#fafafa", shadow: "#c0c0c5" },
+    mockStyle: "soft-plastic",
+  },
+  {
     id: "clay",
     zh: "粘土",
     en: "Clay",
@@ -118,8 +137,17 @@ export const TEXTURES: Texture[] = [
     mockStyle: "transparent-glass",
   },
   {
+    id: "ice",
+    zh: "冰",
+    en: "Ice",
+    descriptor:
+      "crystal-clear frozen ice with subtle internal fractures, frosty micro-bubbles and cold blue-white refraction",
+    palette: { base: "#d4f2ff", highlight: "#ffffff", shadow: "#7eb8d8" },
+    mockStyle: "transparent-glass",
+  },
+  {
     id: "plush",
-    zh: "绒毛",
+    zh: "毛绒",
     en: "Plush",
     descriptor:
       "fluffy plush fabric with tiny fibers, soft shadows and a toy-like 3D form",
@@ -127,12 +155,30 @@ export const TEXTURES: Texture[] = [
     mockStyle: "fuzzy-fiber",
   },
   {
+    id: "knit",
+    zh: "针织",
+    en: "Knit",
+    descriptor:
+      "chunky wool cable-knit sweater macro: visible V-stitches, soft yarn fibers, gentle pilling, warm studio light",
+    palette: { base: "#c4a88c", highlight: "#e8dcc8", shadow: "#7a5c44" },
+    mockStyle: "fuzzy-fiber",
+  },
+  {
     id: "chrome",
-    zh: "金属",
+    zh: "镀铬",
     en: "Chrome",
     descriptor:
       "mirror-finish chrome metal with crisp reflections of a neutral studio environment",
     palette: { base: "#c7ccd1", highlight: "#ffffff", shadow: "#4e5560" },
+    mockStyle: "polished-metal",
+  },
+  {
+    id: "copper",
+    zh: "铜",
+    en: "Copper",
+    descriptor:
+      "warm brushed copper metal with soft oxidation in recesses and rich specular rolls",
+    palette: { base: "#c4723c", highlight: "#e8a878", shadow: "#6a3a22" },
     mockStyle: "polished-metal",
   },
   {
@@ -152,6 +198,15 @@ export const TEXTURES: Texture[] = [
       "glossy porcelain ceramic with smooth rounded edges and a soft ceramic glaze",
     palette: { base: "#f3f3f0", highlight: "#ffffff", shadow: "#c4c4bf" },
     mockStyle: "glossy-porcelain",
+  },
+  {
+    id: "chocolate",
+    zh: "巧克力",
+    en: "Chocolate",
+    descriptor:
+      "dark tempered chocolate with a satin snap, subtle cocoa bloom and soft edge rounding",
+    palette: { base: "#3d2314", highlight: "#6b4530", shadow: "#1a0f08" },
+    mockStyle: "waxy-drip",
   },
   {
     id: "jelly",
@@ -190,6 +245,15 @@ export const TEXTURES: Texture[] = [
     mockStyle: "felt-grain",
   },
   {
+    id: "feltChrome",
+    zh: "毛毡镀铬边",
+    en: "Felt + chrome rim",
+    descriptor:
+      "grey matte wool felt letterface with a mirror-polished chrome metal outline and bevel rim, studio macro",
+    palette: { base: "#9a9a9e", highlight: "#e8e8ec", shadow: "#5a5a62" },
+    mockStyle: "felt-grain",
+  },
+  {
     id: "marble",
     zh: "大理石",
     en: "Marble",
@@ -200,7 +264,7 @@ export const TEXTURES: Texture[] = [
   },
   {
     id: "holographic",
-    zh: "全息",
+    zh: "镭射",
     en: "Holographic",
     descriptor:
       "iridescent holographic foil shifting through pastel rainbow hues with a mirror sheen",
@@ -285,39 +349,48 @@ export function getTexture(id: TextureId): Texture {
   return TEXTURES.find((t) => t.id === id) ?? TEXTURES[0];
 }
 
-/** Concrete textures (no "random"/"mixed" meta entries). */
+/** Concrete textures (no meta picker entries). */
 export const CONCRETE_TEXTURES: Texture[] = TEXTURES.filter(
-  (t) => t.id !== "random" && t.id !== "mixed",
+  (t) => !META_TEXTURE_IDS.has(t.id),
 );
 
 /**
- * Curated subset used by the "mixed" preset.
- * These are the materials that read most clearly as distinct premium
- * 3D objects in a single composition (per the design reference): candy,
- * clay, moss, chrome, fur, iridescent glass, yarn-like fabric, etc.
+ * Materials listed in the UI picker (cost-controlled subset).
+ * Other ids still resolve via `getTexture` for legacy sessions.
  */
-const MIXED_POOL_IDS: TextureId[] = [
-  "jelly",
-  "clay",
-  "moss",
+export const TEXTURE_PICKER_IDS: readonly TextureId[] = [
+  "random",
+  "mixed",
+  "spriteCache",
   "chrome",
-  "plush",
-  "holographic",
-  "felt",
-  "bubble",
-  "ceramic",
   "gold",
-  "wax",
-  "crystal",
-  "marble",
-];
+  "glass",
+  "ceramic",
+  "holographic",
+  "moss",
+  "wood",
+  "jelly",
+] as const;
+
+export const TEXTURES_FOR_UI: Texture[] = TEXTURE_PICKER_IDS.map((id) =>
+  getTexture(id),
+);
+
+export const TEXTURES_FOR_UI_CONCRETE: Texture[] = TEXTURES_FOR_UI.filter(
+  (t) => !META_TEXTURE_IDS.has(t.id),
+);
+
+/**
+ * Curated subset used by the "mixed" preset — aligned with the picker so
+ * random assignments never pick a hidden material id.
+ */
+const MIXED_POOL_IDS: TextureId[] = TEXTURES_FOR_UI_CONCRETE.map((t) => t.id);
 
 export const MIXED_POOL: Texture[] = MIXED_POOL_IDS.map((id) => getTexture(id));
 
 export function pickRandomTexture(): Texture {
-  return CONCRETE_TEXTURES[
-    Math.floor(Math.random() * CONCRETE_TEXTURES.length)
-  ];
+  const pool = TEXTURES_FOR_UI_CONCRETE;
+  return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
 function pickFromPool(pool: Texture[]): Texture {
@@ -354,6 +427,15 @@ export function resolveTextures(
     const chars = Array.from(text);
     const perChar = assignDistinctPerChar(chars.length, MIXED_POOL);
     return { primary: perChar[0] ?? pickFromPool(MIXED_POOL), perChar };
+  }
+  if (selection === "spriteCache") {
+    const t = (text || "Sample").trim() || "Sample";
+    const chars = Array.from(t);
+    const fb = getTexture("chrome");
+    return {
+      primary: fb,
+      perChar: chars.map(() => fb),
+    };
   }
   return { primary: getTexture(selection) };
 }

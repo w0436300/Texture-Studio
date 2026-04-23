@@ -2,29 +2,25 @@ import type { TextureId } from "./textures";
 import { isAiTextureMaterial } from "./textures";
 
 const TILE = [
-  "Square 1:1 texture tile, seamless edges, no letterform silhouette, no typography",
-  "Ultra sharp 8k macro photograph, studio soft light, subtle micro-contrast",
-  "Designed to tile on a 3D extruded letter UV — fill frame edge-to-edge",
-  "Opaque tile is fine",
-  "No watermark, no text, no logo, no frame",
+  "Output is a **square 1:1** flat material swatch only — **orthographic top-down**, no perspective, no letter shapes, no typography, no watermark",
+  "**Basecolor / albedo** intent: even studio lighting, **avoid harsh cast shadows and blown specular hotspots** so it tiles as a neutral color map on 3D UVs",
+  "**Seamlessly tileable** on all four edges; continuous micro-detail to the frame border; fill edge-to-edge",
+  "Ultra sharp macro, high micro-contrast in surface relief (fibers, blades, grain), **physically plausible color**",
+  "Opaque material; no frame, no props, no floor",
 ].join(". ");
 
 function subjectFor(textureId: TextureId): string {
   switch (textureId) {
     case "moss":
-      return `Hyper-realistic **living moss** carpet: damp velvet micro-leaves, deep emerald to olive variation, tiny water droplets, soft subsurface translucency, organic clumps and fine root hairs, museum macro photography`;
+      return `**Dense living moss turf**: thousands of tiny upright **blades and filaments**, deep emerald to yellow-green variation, damp highlights, **3D depth** (not a flat photo of moss paper); micro shadows only as subtle albedo variation, not hard cast shadows`;
     case "plush":
-      return `Hyper-realistic **dense plush / faux fur** pile: directional nap, soft subsurface scattering, individual fiber tufts catching rim light, premium teddy or microfleece, catalog macro shot`;
-    case "felt":
-      return `Hyper-realistic **pressed wool felt**: dense matted fibers, subtle directional nap, warm craft-studio macro, soft shadows between fiber clumps`;
+      return `**Deep pile faux fur / microfleece**: directional nap, **individual tufts** visible, soft tonal variation, premium textile catalog macro — must read as **volume**, not a printed flat pattern`;
+    case "knit":
+      return `**Chunky wool cable-knit**: clear **V-stitches and cable rows**, yarn twist visible, warm neutral grey-beige wool tones, soft pilling — tactile textile macro`;
     case "wood":
-      return `Hyper-realistic **natural oak / hardwood** flat-sawn face: clear annual rings, medullary rays, matte varnish, warm brown tones, furniture-grade macro`;
-    case "marble":
-      return `Hyper-realistic **polished marble** surface: elegant grey veining on light stone, glossy specular, subtle subsurface, architectural sample macro`;
-    case "wax":
-      return `Hyper-realistic **soft candle wax** surface: gentle translucency, micro ripples, warm cream tones, soft studio grazing light, macro food-styling quality`;
+      return `**Flat-sawn hardwood face** (oak or walnut): **annual rings and medullary rays** clearly readable, matte satin varnish, warm brown, furniture-grade sample — grain runs in varied directions across tile for natural tiling`;
     default:
-      return `Hyper-realistic **organic material** surface with rich micro-detail and believable subsurface response`;
+      return `**Organic material** surface with rich micro-relief and believable color variation`;
   }
 }
 
@@ -38,7 +34,7 @@ export function buildHdMaterialTilePrompt(
   const mat = subjectFor(textureId);
   return [
     `[Subject] ${mat}.`,
-    `[Tile] ${TILE}.`,
-    `[Note] Surface detail tile for the single character "${glyph}" in a 3D typography app — keep material readable at small scale when tiled on extruded letterforms.`,
+    `[Tile requirements] ${TILE}.`,
+    `[Use] This image will be used as a **repeating diffuse map** on extruded 3D letters (character "${glyph}") — prioritize **tiling quality** and **readability at small repeat** over artistic framing.`,
   ].join("\n");
 }

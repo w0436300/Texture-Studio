@@ -57,12 +57,13 @@ export async function POST(req: NextRequest) {
   }
 
   /** ASCII: hero is always Three.js per-glyph composition; organic tiles via /api/generateHdMaterial. */
+  const isSpriteCache = texture === "spriteCache";
   return NextResponse.json({
     ok: true,
     source: "three",
     prompt: built.prompt,
-    texture: built.primary.id,
-    perChar: built.perChar?.map((t) => t.id),
+    texture: isSpriteCache ? "spriteCache" : built.primary.id,
+    perChar: isSpriteCache ? undefined : built.perChar?.map((t) => t.id),
     resolvedText,
   });
 }

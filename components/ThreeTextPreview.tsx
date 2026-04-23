@@ -20,6 +20,10 @@ import {
   toDataUrlFromStored,
 } from "@/lib/hd-material-cache";
 import { createPhysicalMaterialForTexture } from "@/lib/three-material-presets";
+import {
+  disposeThreeProceduralTextures,
+  isSharedProceduralTexture,
+} from "@/lib/three-procedural-textures";
 import { isAiTextureMaterial, type TextureId } from "@/lib/textures";
 
 const FONT_URL = "/fonts/helvetiker_bold.typeface.json";
@@ -42,7 +46,14 @@ type Props = {
   className?: string;
 };
 
-type SavedXform = { px: number; py: number; pz: number; rz: number };
+type SavedXform = {
+  px: number;
+  py: number;
+  pz: number;
+  rz: number;
+  /** Uniform scale (optional for legacy cache entries). */
+  sc?: number;
+};
 
 function readXformCache(key: string): SavedXform[] | null {
   if (typeof window === "undefined") return null;
@@ -64,6 +75,7 @@ function writeXformCache(key: string, groups: THREE.Group[]): void {
       py: g.position.y,
       pz: g.position.z,
       rz: g.rotation.z,
+      sc: g.scale.x,
     }));
     sessionStorage.setItem(key, JSON.stringify(data));
   } catch {
@@ -85,7 +97,7 @@ export function cacheKeyForThreeLayout(
 ): string {
   const sig = units.map((u) => `${u.sourceIndex}:${u.ch}`).join(",");
   const mats = units.map((u) => matIds[u.sourceIndex] ?? "clay").join(",");
-  return `ts_three_xform_v1|${sig}|${mats}`;
+  return `ts_three_xform_v2|${sig}|${mats}`;
 }
 
 interface PreviewCtx {
@@ -94,6 +106,8 @@ interface PreviewCtx {
   renderer: THREE.WebGLRenderer;
   root: THREE.Group;
   letterGroups: THREE.Group[];
+  /** Last picked letter; Shift+wheel scales this group. */
+  selectedLetter: THREE.Group | null;
   font: Font | null;
   raycaster: THREE.Raycaster;
   ndc: THREE.Vector2;
@@ -105,6 +119,9 @@ interface PreviewCtx {
     lastY: number;
   };
 }
+
+const LETTER_SCALE_MIN = 0.35;
+const LETTER_SCALE_MAX = 3;
 
 export const ThreeTextPreview = forwardRef<
   ThreeTextPreviewHandle,
@@ -140,8 +157,8 @@ export const ThreeTextPreview = forwardRef<
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    // Light studio background — matches reference aesthetic
-    scene.background = new THREE.Color(0xf2f2f4);
+    // High-key studio — closer to product / poster references
+    scene.background = new THREE.Color(0xffffff);
 
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 2500);
     camera.position.set(0, 10, 500);
@@ -156,7 +173,9 @@ export const ThreeTextPreview = forwardRef<
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.18;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.style.touchAction = "none";
     mount.appendChild(renderer.domElement);
 
@@ -166,18 +185,42 @@ export const ThreeTextPreview = forwardRef<
     scene.environment = envTexture;
     pmrem.dispose();
 
-    // Studio lighting tuned for light background
-    const amb = new THREE.AmbientLight(0xffffff, 0.55);
+    // Studio lighting + soft shadows for ground contact (real-time, not path-traced)
+    const amb = new THREE.AmbientLight(0xffffff, 0.42);
     scene.add(amb);
-    const key = new THREE.DirectionalLight(0xffffff, 1.05);
-    key.position.set(120, 200, 300);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xe8eaef, 0.35);
+    scene.add(hemi);
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.35);
+    key.position.set(140, 220, 280);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 50;
+    key.shadow.camera.far = 900;
+    key.shadow.camera.left = -320;
+    key.shadow.camera.right = 320;
+    key.shadow.camera.top = 320;
+    key.shadow.camera.bottom = -320;
+    key.shadow.bias = -0.00025;
+    key.shadow.normalBias = 0.035;
+    key.shadow.radius = 6;
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xb8d4ff, 0.5);
-    rim.position.set(-200, 60, -80);
+
+    const rim = new THREE.DirectionalLight(0xc8dcff, 0.42);
+    rim.position.set(-220, 80, -120);
     scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xfff0e8, 0.28);
-    fill.position.set(-60, -80, 200);
+    const fill = new THREE.DirectionalLight(0xfff5f0, 0.32);
+    fill.position.set(-80, -40, 220);
     scene.add(fill);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(6000, 6000),
+      new THREE.ShadowMaterial({ opacity: 0.2 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -88;
+    ground.receiveShadow = true;
+    scene.add(ground);
 
     const root = new THREE.Group();
     scene.add(root);
@@ -191,6 +234,7 @@ export const ThreeTextPreview = forwardRef<
       renderer,
       root,
       letterGroups: [],
+      selectedLetter: null,
       font: null,
       raycaster,
       ndc,
@@ -247,7 +291,11 @@ export const ThreeTextPreview = forwardRef<
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
       const g = pickGroup(e.clientX, e.clientY);
-      if (!g) return;
+      if (!g) {
+        ctx.selectedLetter = null;
+        return;
+      }
+      ctx.selectedLetter = g;
       e.preventDefault();
       renderer.domElement.setPointerCapture(e.pointerId);
       ctx.drag = {
@@ -288,11 +336,32 @@ export const ThreeTextPreview = forwardRef<
 
     const onDblClick = () => {
       clearXformCache(xformKeyRef.current);
+      ctx.selectedLetter = null;
       for (const g of ctx.letterGroups) {
         g.position.set(0, 0, 0);
         g.rotation.set(0, 0, 0);
+        g.scale.setScalar(1);
       }
       layoutLetterGroups(ctx, unitsRef.current, matIdsRef.current);
+      writeXformCache(xformKeyRef.current, ctx.letterGroups);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
+      const sel = ctx.selectedLetter;
+      if (
+        !sel ||
+        !ctx.letterGroups.some((g) => g === sel)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const next = THREE.MathUtils.clamp(
+        sel.scale.x * Math.exp(-e.deltaY * 0.0018),
+        LETTER_SCALE_MIN,
+        LETTER_SCALE_MAX,
+      );
+      sel.scale.setScalar(next);
       writeXformCache(xformKeyRef.current, ctx.letterGroups);
     };
 
@@ -301,6 +370,7 @@ export const ThreeTextPreview = forwardRef<
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointercancel", onPointerUp);
     renderer.domElement.addEventListener("dblclick", onDblClick);
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
     const loader = new FontLoader();
     void loader
@@ -325,8 +395,13 @@ export const ThreeTextPreview = forwardRef<
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", onDblClick);
+      renderer.domElement.removeEventListener("wheel", onWheel);
       disposeLetters(ctx);
+      ground.geometry.dispose();
+      (ground.material as THREE.Material).dispose();
+      scene.remove(ground);
       envTexture.dispose();
+      disposeThreeProceduralTextures();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
@@ -360,6 +435,7 @@ export const ThreeTextPreview = forwardRef<
         if (!s) return;
         g.position.set(s.px, s.py, s.pz);
         g.rotation.set(0, 0, s.rz);
+        g.scale.setScalar(s.sc ?? 1);
       });
     } else {
       layoutLetterGroups(ctx, units, materialIdsPerChar);
@@ -370,7 +446,7 @@ export const ThreeTextPreview = forwardRef<
   return (
     <div
       className={[
-        "ts-three-preview relative w-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-ink-line bg-[#f2f2f4]",
+        "ts-three-preview relative w-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-ink-line bg-white",
         "h-[min(52vh,520px)]",
         className ?? "",
       ]
@@ -379,28 +455,45 @@ export const ThreeTextPreview = forwardRef<
     >
       <div ref={mountRef} className="absolute inset-0 min-h-0 w-full" />
       {loadError && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#f2f2f4]/90 text-xs text-black/60">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/90 text-xs text-black/60">
           {loadError}
         </div>
       )}
       <div className="pointer-events-none absolute bottom-2 left-3 right-3 text-[10px] text-black/30">
-        Three.js · 逐字挤出 · 拖动平移 · Shift+拖动旋转 · 双击还原 · 布局存
-        sessionStorage · 材质与左侧选项联动 (ASCII)
+        Three.js · 逐字挤出 · 点选字母 · 拖动平移 · Shift+拖动旋转 ·
+        Shift+滚轮缩放 · 双击还原 · 布局存 sessionStorage · 材质与左侧选项联动 (ASCII)
       </div>
     </div>
   );
 });
 
 function disposeLetters(ctx: PreviewCtx) {
+  ctx.selectedLetter = null;
   for (const g of ctx.letterGroups) {
     g.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.geometry?.dispose();
         const m = o.material;
         const disposeOne = (mat: THREE.Material) => {
-          if (mat instanceof THREE.MeshStandardMaterial && mat.map) {
-            mat.map.dispose();
-            mat.map = null;
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            if (mat.map) {
+              mat.map.dispose();
+              mat.map = null;
+            }
+            const detachMap = (tex: THREE.Texture | null | undefined) => {
+              if (!tex) return;
+              if (!isSharedProceduralTexture(tex)) tex.dispose();
+            };
+            detachMap(mat.roughnessMap);
+            mat.roughnessMap = null;
+            detachMap(mat.metalnessMap);
+            mat.metalnessMap = null;
+            detachMap(mat.normalMap);
+            mat.normalMap = null;
+            detachMap(mat.bumpMap);
+            mat.bumpMap = null;
+            detachMap(mat.aoMap);
+            mat.aoMap = null;
           }
           mat.dispose();
         };
@@ -456,9 +549,9 @@ function buildLetters(
   const { font, root } = ctx;
   if (!font) return;
 
-  // Puffier / inflated letter style — bigger bevel, more depth, smoother curves
+  // Puffier / inflated letter style — larger bevel reads closer to balloon / resin refs
   const size = 52;
-  const depth = 22;
+  const depth = 24;
 
   for (const u of units) {
     const matId = matIds[u.sourceIndex] ?? "clay";
@@ -467,12 +560,12 @@ function buildLetters(
       font,
       size,
       depth,
-      curveSegments: 12,
+      curveSegments: 16,
       bevelEnabled: true,
-      bevelThickness: 4,
-      bevelSize: 3,
+      bevelThickness: 6,
+      bevelSize: 4.5,
       bevelOffset: 0,
-      bevelSegments: 5,
+      bevelSegments: 8,
     });
     geo.computeBoundingBox();
     const bb = geo.boundingBox;
@@ -483,6 +576,8 @@ function buildLetters(
       geo.translate(-cx, -cy, -cz);
     }
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     const g = new THREE.Group();
     g.userData.isLetterRoot = true;
     g.add(mesh);

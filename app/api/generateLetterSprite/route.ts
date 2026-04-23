@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tryGenerateWithGemini } from "@/lib/gemini-image";
-import { buildHdMaterialTilePrompt } from "@/lib/hd-material-prompt";
-import { isAiTextureMaterial, type TextureId } from "@/lib/textures";
+import { buildLetterSpritePrompt } from "@/lib/ai-letter-sprite-prompt";
+import { getTexture, type TextureId } from "@/lib/textures";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * AI texture tile for materials marked `isAiTextureMaterial` (Gemini image).
- * Client caches base64 in localStorage under `mat_{codePoint}_{textureId}`.
+ * Full-letter transparent PNG for "AI 单字拼贴" mode. Cached client-side under `sprite_*`.
  */
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -28,7 +27,6 @@ export async function POST(req: NextRequest) {
 
   const glyphRaw = (body.glyph ?? "").toString().trim();
   const textureId = body.textureId as TextureId;
-
   const graphemes = Array.from(glyphRaw);
   if (graphemes.length !== 1) {
     return NextResponse.json(
@@ -37,21 +35,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isAiTextureMaterial(textureId)) {
+  if (
+    textureId === "random" ||
+    textureId === "mixed" ||
+    textureId === "spriteCache"
+  ) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "textureId must be an AI tile material: moss, plush, knit, or wood",
+          "textureId must be a resolved concrete material (not random/mixed/spriteCache)",
       },
       { status: 400 },
     );
   }
 
   const glyph = graphemes[0]!;
-  const prompt = buildHdMaterialTilePrompt(glyph, textureId);
+  const tex = getTexture(textureId);
+  const prompt = buildLetterSpritePrompt(glyph, textureId, tex.descriptor);
   const model =
-    process.env.GEMINI_HD_MATERIAL_MODEL ??
+    process.env.GEMINI_LETTER_SPRITE_MODEL ??
     process.env.GEMINI_IMAGE_MODEL ??
     "gemini-2.5-flash-image";
 
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   return NextResponse.json(
-    { ok: false, error: "Use POST /api/generateHdMaterial" },
+    { ok: false, error: "Use POST /api/generateLetterSprite" },
     { status: 405 },
   );
 }
